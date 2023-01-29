@@ -1,0 +1,128 @@
+import psutil
+import math
+import re
+import subprocess
+import GPUtil
+import platform
+import pynvml
+import wmi
+
+# Get total RAM
+ram_info = psutil.virtual_memory()
+ram_gb = ram_info.total / (1024 ** 3)
+print("Total RAM:", "{:.0f}".format(ram_gb),"GB")
+
+partitions = psutil.disk_partitions()
+
+# Iterate through the partitions
+for partition in partitions:
+    partition_info = psutil.disk_usage(partition.mountpoint)
+    total_partition_bytes = partition_info.total
+    total_partition_gb = total_partition_bytes / (1024 ** 3)
+    rounded_size = math.ceil(total_partition_gb / 512) * 512
+    if rounded_size >= 1024:
+        total_partition_tb = rounded_size / 1024
+        print(partition.device, "Total:", "{:.0f}".format(total_partition_tb), "TB")
+    else:
+        print(partition.device, "Total:", "{:.0f}".format(rounded_size), "GB")
+        
+def get_gpu_info():
+    try:
+        nvidia_check = subprocess.run(['nvidia-smi', '-h'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if nvidia_check.returncode == 0:
+            gpu_info = subprocess.check_output(['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], universal_newlines=True)
+            gpu_info = gpu_info.strip().split('\n')
+            gpu_info = [x.split(', ') for x in gpu_info]
+            return ('NVIDIA', gpu_info)
+        else:
+            amd_check = subprocess.run(['rocm-smi', '-h'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if amd_check.returncode == 0:
+                gpu_info = subprocess.check_output(['rocm-smi', '--list-gpu'], universal_newlines=True)
+                return ('AMD', gpu_info)
+            else:
+                return ('Not Found', [])
+    except:
+        return ('Error', [])
+
+if __name__ == '__main__':
+    gpu_type, gpu_info = get_gpu_info()
+    
+
+if gpu_type == 'NVIDIA':
+    for gpu in gpu_info:
+        name = gpu[0]
+        memory_total = round(int(gpu[1])/(1024 ** 3),2)
+        print(f'GPU name: {name}')
+elif gpu_type == 'AMD':
+    for line in gpu_info.split("\n"):
+        if "Total GPU memory" in line:
+            memory_total = round(int(re.search(r'\d+', line).group())/(1024 ** 3),2)
+            print(f'Total memory: {memory_total} GB')
+
+pynvml.nvmlInit()
+handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
+print(f'Total GPU memory: {meminfo.total/1024**2}MB')
+pynvml.nvmlShutdown()
+
+
+c = wmi.WMI()
+for item in c.Win32_ComputerSystem():
+    print("Brand: ", item.Manufacturer)
+    print("Model: ", item.Model)
+
+import tkinter as tk
+from tkinter import ttk
+
+root = tk.Tk()
+root.title("System Information")
+
+text_widget = tk.Text(root)
+text_widget.pack()
+
+# Get total RAM
+ram_info = psutil.virtual_memory()
+ram_gb = round(ram_info.total / (1024 ** 3),1)
+text_widget.insert(tk.END, "Total RAM: {:.0f} GB\n".format(ram_gb))
+
+
+
+partitions = psutil.disk_partitions()
+
+# Iterate through the partitions
+for partition in partitions:
+    partition_info = psutil.disk_usage(partition.mountpoint)
+    total_partition_bytes = partition_info.total
+    total_partition_gb = total_partition_bytes / (1024 ** 3)
+    rounded_size = math.ceil(total_partition_gb / 512) * 512
+    if rounded_size >= 1024:
+        total_partition_tb = rounded_size / 1024
+        text_widget.insert(tk.END, "{} Total: {} TB\n".format(partition.device, int(total_partition_tb)))
+    else:
+        text_widget.insert(tk.END, "{} Total: {} GB\n".format(partition.device, int(rounded_size)))
+
+# Get GPU Info
+gpu_type, gpu_info = get_gpu_info()
+if gpu_type == 'NVIDIA':
+    for gpu in gpu_info:
+        name = gpu[0]
+        memory_total = round(int(gpu[1])/(1024 ** 3),2)
+        text_widget.insert(tk.END, "GPU name: {}\n".format(name))
+elif gpu_type == 'AMD':
+    for line in gpu_info.split("\n"):
+        if "Total GPU memory" in line:
+            memory_total = round(int(re.search(r'\d+', line).group())/(1024 ** 3),2)
+            text_widget.insert(tk.END, "Total memory: {} GB\n".format(memory_total))
+
+pynvml.nvmlInit()
+handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
+text_widget.insert(tk.END, "Total GPU memory: {:.2f} MB\n".format(meminfo.total/1024**2))
+pynvml.nvmlShutdown()
+
+c = wmi.WMI()
+for item in c.Win32_ComputerSystem():
+    text_widget.insert(tk.END, "Brand: {}\n".format(item.Manufacturer))
+    text_widget.insert(tk.END, "Model: {}\n".format(item.Model))
+
+root.mainloop()
